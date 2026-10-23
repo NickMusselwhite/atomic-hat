@@ -1,4 +1,15 @@
-# image-template
+# Atomic Hat
+
+Fedora Kinoite 44 with RPM Fusion NVIDIA open kernel modules, CUDA driver
+support, Mesa Freeworld, and full FFmpeg. See [graphics and multimedia
+configuration](docs/rpmfusion.md) for package choices, build checks, and
+the remaining Secure Boot module-signing setup.
+
+After a successful build on `main`, the published image will be
+`ghcr.io/nickmusselwhite/atomic-hat:latest`. Pull requests build without
+publishing.
+
+## Original template documentation
 
 This repository is meant to be a template for building your own custom [bootc](https://github.com/bootc-dev/bootc) image. This template is the recommended way to make customizations to any image published by the Universal Blue Project.
 
@@ -316,3 +327,4 @@ These are images derived from this template (or similar enough to this template)
 - [Homer](https://github.com/bketelsen/homer/)
 - [Amy OS](https://github.com/astrovm/amyos)
 - [VeneOS](https://github.com/Venefilyn/veneos)
+
