@@ -31,7 +31,9 @@ user-space graphics and CUDA driver libraries remain proprietary.
 
 The build reads the kernel version from the image's RPM database, installs
 matching development packages, compiles as the `akmods` user, installs the
-resulting kmod RPM, and runs `depmod`. It checks all four modules against
+resulting kmod RPM, and runs `depmod`. The package's automatic OSTree hook
+is temporarily deferred because it attempts to compile as root; the
+original hook is restored after installation. It checks all four modules against
 the image kernel and user-space driver version. Missing or mismatched
 modules fail the build. The CI runner needs no NVIDIA GPU.
 

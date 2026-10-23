@@ -31,12 +31,26 @@ dnf5 install -y --setopt=install_weak_deps=False \
     gcc make elfutils-libelf-devel rpm-build redhat-rpm-config \
     akmods kmodtool pciutils dwarves util-linux
 
+# Fedora Atomic's automatic hook invokes akmodsbuild as root and makes the
+# DNF transaction fail. Defer only that hook to the explicit unprivileged
+# build below; restore the packaged script immediately after installation.
+akmods_hook="$(rpm -ql akmods | grep '/akmods-ostree-post$')"
+test -f "${akmods_hook}"
+mv "${akmods_hook}" "${akmods_hook}.atomic-hat-original"
+restore_akmods_hook() {
+    mv -f "${akmods_hook}.atomic-hat-original" "${akmods_hook}"
+}
+trap restore_akmods_hook EXIT
+printf '#!/bin/sh\nexit 0\n' > "${akmods_hook}"
+chmod 0755 "${akmods_hook}"
 dnf5 install -y --exclude='kernel*' --setopt=install_weak_deps=False \
     akmod-nvidia \
     xorg-x11-drv-nvidia \
     xorg-x11-drv-nvidia-cuda \
     xorg-x11-drv-nvidia-power \
     tmux
+restore_akmods_hook
+trap - EXIT
 
 # Replace Fedora's restricted FFmpeg build and its split libraries.
 if rpm -q ffmpeg-free >/dev/null 2>&1; then
