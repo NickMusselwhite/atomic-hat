@@ -152,6 +152,9 @@ grep -q 'libx264' "${build_dir}/encoders.txt"
 grep -q 'h264_nvenc' "${build_dir}/encoders.txt"
 command -v nvidia-smi
 
+# Install additional desktop and gaming applications.
+bash /ctx/applications.sh
+
 # Preserve the template's existing service customization.
 systemctl enable podman.socket
 
