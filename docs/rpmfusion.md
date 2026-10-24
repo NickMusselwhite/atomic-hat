@@ -63,25 +63,63 @@ for the base image's kernel are unavailable.
 
 ## Secure Boot
 
-**Trusted NVIDIA module signing is not configured by this change.** The
-template's Cosign `SIGNING_SECRET` signs the OCI image, not kernel modules.
-Fedora's signed kernel does not automatically trust a locally built module.
+Default-branch release builds use the `MODULE_SIGNING_KEY` GitHub Actions
+repository secret and the public `atomic-hat.der` certificate in the repo
+root. The secret contains the entire unencrypted PEM private key. These
+are separate from the template's Cosign `SIGNING_SECRET`, which signs the
+OCI image rather than kernel modules.
 
-Before using this image with Secure Boot enabled, supply a persistent
-module-signing key through build secret mounts, sign every NVIDIA module,
-and enroll the public certificate on the target machine. Never commit a
-private key, copy it into an image layer, or generate a new trust key for
-each build. The build removes akmods' default private-key file before its
-layer is committed. This branch does not change firmware security settings.
+Podman mounts the signing files as build secrets. The build checks that
+the key matches the certificate, signs through RPM's existing hook before
+module compression, and cryptographically verifies every packaged NVIDIA
+module against that certificate. A signing failure stops the build.
+The private key is used only on temporary mounts; the image retains the
+public certificate at `/etc/pki/akmods/certs/public_key.der`.
+
+PRs and builds from non-default branches generate a temporary test key to
+exercise the same signing checks without using the release key. They do
+not publish an image. Do not enroll their temporary test certificates.
+
+On the target machine, enroll the **release** certificate once:
+
+```sh
+sudo mokutil --import /etc/pki/akmods/certs/public_key.der
+```
+
+Choose a temporary enrollment password, reboot through Fedora's signed
+shim, and select **Enroll MOK** in the MOK manager. Confirm the certificate
+and enter that password. This is a password you choose, not `universalblue`.
+You can also import the repo's `atomic-hat.der` before installing the image
+from a Linux system with `mokutil` and a working shim/MOK enrollment flow.
+After enrollment and reboot, confirm:
+
+```sh
+mokutil --sb-state
+mokutil --test-key /etc/pki/akmods/certs/public_key.der
+modinfo -F signer nvidia
+```
+
+The signer should be `Atomic Hat module signing`. Keep the same key for
+future builds; replacing it requires enrolling the new certificate.
 
 ## Verification
 
-Build using the pull-request workflow or `just build`. Pull-request builds
-do not publish to GHCR. Checks cover installed packages, NVIDIA module
-flavor/version/kernel, FFmpeg x264/NVENC encoder availability, and
-`bootc container lint`. These checks do not exercise GPU hardware.
+Build using the pull-request workflow, or locally from the repo directory:
 
-After addressing module signing where required and booting on the target:
+```sh
+env MODULE_SIGNING_KEY_FILE="$HOME/.local/share/atomic-hat-signing/atomic-hat.key" just build
+```
+
+The public certificate defaults to `atomic-hat.der`; set
+`MODULE_SIGNING_CERT_FILE` to use another matching certificate. Keep the
+private key outside the repository.
+
+Checks cover installed packages, NVIDIA module flavor/version/kernel and
+signatures, FFmpeg x264/NVENC encoder availability, and `bootc container
+lint`. CI does not test firmware enrollment or GPU hardware. The first
+release build also checks that the GitHub secret matches `atomic-hat.der`.
+
+After enrolling the release certificate where required and booting on the target:
 
 ```sh
 bootc status

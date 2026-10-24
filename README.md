@@ -3,7 +3,7 @@
 Fedora Kinoite 44 with RPM Fusion NVIDIA open kernel modules, CUDA driver
 support, Mesa Freeworld, and full FFmpeg. See [graphics and multimedia
 configuration](docs/rpmfusion.md) for package choices, build checks, and
-the remaining Secure Boot module-signing setup.
+Secure Boot module signing and certificate enrollment.
 
 After a successful build on `main`, the published image will be
 `ghcr.io/nickmusselwhite/atomic-hat:latest`. Pull requests build without

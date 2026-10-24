@@ -1,4 +1,6 @@
 cosign.key
+atomic-hat.key
+*.priv
 _build_*
 output
 _build-*/**

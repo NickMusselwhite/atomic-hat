@@ -98,7 +98,15 @@ build $target_image=image_name $tag=default_tag:
 
     set -euox pipefail
 
-    BUILD_ARGS=()
+    # Pass file paths only; Podman mounts their contents during the build.
+    : "${MODULE_SIGNING_KEY_FILE:?Set MODULE_SIGNING_KEY_FILE to your private signing key file}"
+    MODULE_SIGNING_CERT_FILE="${MODULE_SIGNING_CERT_FILE:-atomic-hat.der}"
+    test -s "${MODULE_SIGNING_KEY_FILE}"
+    test -s "${MODULE_SIGNING_CERT_FILE}"
+    BUILD_ARGS=(
+        --secret "id=module_signing_key,src=${MODULE_SIGNING_KEY_FILE}"
+        --secret "id=module_signing_cert,src=${MODULE_SIGNING_CERT_FILE}"
+    )
     LABELS=()
     if [[ -z "$(git status -s)" ]]; then
         GIT_SHA=$(git rev-parse --short HEAD)

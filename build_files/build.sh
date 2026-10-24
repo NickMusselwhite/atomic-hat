@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+test -s /run/secrets/module_signing_key
+test -s /run/secrets/module_signing_cert
+
 # Select the open NVIDIA module independently of the CI runner's hardware.
 cp -avf /ctx/system_files/. /
 
@@ -29,7 +32,7 @@ dnf5 install -y --setopt=install_weak_deps=False \
     "kernel-devel-${kernel}" \
     "kernel-devel-matched-${kernel}" \
     gcc make elfutils-libelf-devel rpm-build redhat-rpm-config \
-    akmods kmodtool pciutils dwarves util-linux
+    akmods kmodtool pciutils dwarves util-linux openssl mokutil
 
 # Fedora Atomic's automatic hook invokes akmodsbuild as root and makes the
 # DNF transaction fail. Defer only that hook to the explicit unprivileged
@@ -75,12 +78,27 @@ test -f "/usr/src/kernels/${kernel}/Makefile"
 test -r /usr/src/akmods/nvidia-kmod.latest
 getent passwd akmods >/dev/null
 build_dir="$(mktemp -d /tmp/atomic-hat-nvidia.XXXXXXXX)"
-trap 'rm -rf "${build_dir}"' EXIT
+trap 'rm -f /etc/rpm/macros.atomic-hat-signing; rm -rf "${build_dir}"' EXIT
 chown akmods:akmods "${build_dir}"
+
+# Keep the private key on the Containerfile's /tmp tmpfs. RPM's existing
+# signing hook signs the modules before compression and RPM packaging.
+certificate=/etc/pki/akmods/certs/public_key.der
+install -D -m 0644 /run/secrets/module_signing_cert "${certificate}"
+openssl x509 -inform DER -in "${certificate}" -noout -checkend 0
+openssl x509 -inform DER -in "${certificate}" -pubkey -noout > "${build_dir}/cert.pub"
+openssl pkey -in /run/secrets/module_signing_key -passin pass: \
+    -pubout -out "${build_dir}/key.pub"
+cmp "${build_dir}/cert.pub" "${build_dir}/key.pub"
+install -o akmods -g akmods -m 0400 /run/secrets/module_signing_key "${build_dir}/module.key"
+printf '%%_kmodtool_signmodules 1\n%%_kmodtool_signmodules_privkey %s\n%%_kmodtool_signmodules_pubkey %s\n' \
+    "${build_dir}/module.key" "${certificate}" > /etc/rpm/macros.atomic-hat-signing
+
 runuser -u akmods -- akmodsbuild \
     --kernels "${kernel}" \
     --outputdir "${build_dir}" \
     /usr/src/akmods/nvidia-kmod.latest
+rm -f "${build_dir}/module.key" /etc/rpm/macros.atomic-hat-signing
 
 shopt -s nullglob
 module_rpms=("${build_dir}"/kmod-nvidia-*.rpm)
@@ -99,6 +117,32 @@ for module in nvidia nvidia_modeset nvidia_drm nvidia_uvm; do
 done
 [[ "$(modinfo -k "${kernel}" -F license nvidia)" == *MIT* ]]
 
+# Verify the actual signature, including any additional NVIDIA modules.
+# -noverify skips CA-chain validation for our self-signed certificate;
+# -nointern restricts signature verification to that exact certificate.
+openssl x509 -inform DER -in "${certificate}" -out "${build_dir}/certificate.pem"
+rpm -qlp "${module_rpms[@]}" > "${build_dir}/module-files.txt"
+signed_modules=0
+while IFS= read -r module; do
+    case "${module}" in
+        *.ko.xz) xz -dc "${module}" > "${build_dir}/module.ko" ;;
+        *.ko.zst) zstd -dc "${module}" > "${build_dir}/module.ko" ;;
+        *.ko.gz) gzip -dc "${module}" > "${build_dir}/module.ko" ;;
+        *.ko) cp "${module}" "${build_dir}/module.ko" ;;
+        *) continue ;;
+    esac
+    /usr/src/kernels/"${kernel}"/scripts/extract-module-sig.pl -s \
+        "${build_dir}/module.ko" > "${build_dir}/module.p7s"
+    /usr/src/kernels/"${kernel}"/scripts/extract-module-sig.pl -0 \
+        "${build_dir}/module.ko" > "${build_dir}/module.data"
+    openssl cms -verify -binary -inform DER -in "${build_dir}/module.p7s" \
+        -content "${build_dir}/module.data" -certfile "${build_dir}/certificate.pem" \
+        -nointern -noverify -out /dev/null
+    signed_modules=$((signed_modules + 1))
+done < "${build_dir}/module-files.txt"
+test "${signed_modules}" -ge 4
+openssl x509 -inform DER -in "${certificate}" -noout -subject -fingerprint -sha256
+
 # Catch unwanted erasures and missing codecs before publication.
 rpm -q bootc kernel-core plasma-workspace mesa-dri-drivers \
     mesa-va-drivers-freeworld mesa-vulkan-drivers-freeworld \
@@ -111,8 +155,7 @@ command -v nvidia-smi
 # Preserve the template's existing service customization.
 systemctl enable podman.socket
 
-# Never ship an automatically generated akmods private key. Trusted Secure
-# Boot module signing remains separate work; see docs/rpmfusion.md.
+# Remove any unrelated private key generated when akmods was installed.
 rm -f /etc/pki/akmods/private/private_key.priv
 dnf5 clean all
 

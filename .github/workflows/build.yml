@@ -66,6 +66,43 @@ jobs:
           echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> ${GITHUB_ENV}
           echo "IMAGE_NAME=${IMAGE_NAME,,}" >> ${GITHUB_ENV}
 
+      # PRs and builds from non-default branches never receive the release key.
+      - name: Prepare test module signing key
+        if: github.event_name == 'pull_request' || github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          signing_dir="${RUNNER_TEMP}/atomic-hat-signing"
+          mkdir -p "${signing_dir}"
+          openssl req -new -x509 -newkey rsa:2048 -sha256 -days 2 -noenc \
+            -subj '/CN=Atomic Hat CI test only/' \
+            -addext 'basicConstraints=critical,CA:FALSE' \
+            -addext 'keyUsage=critical,digitalSignature' \
+            -addext 'extendedKeyUsage=codeSigning,1.3.6.1.4.1.2312.16.1.2' \
+            -keyout "${signing_dir}/module.key" \
+            -outform DER -out "${signing_dir}/module.der"
+          echo "MODULE_SIGNING_KEY_FILE=${signing_dir}/module.key" >> "${GITHUB_ENV}"
+          echo "MODULE_SIGNING_CERT_FILE=${signing_dir}/module.der" >> "${GITHUB_ENV}"
+
+      - name: Prepare release module signing key
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        shell: bash
+        env:
+          MODULE_SIGNING_KEY: ${{ secrets.MODULE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ -z "${MODULE_SIGNING_KEY}" ]]; then
+            echo '::error::Set the MODULE_SIGNING_KEY repository secret before publishing.'
+            exit 1
+          fi
+          signing_dir="${RUNNER_TEMP}/atomic-hat-signing"
+          mkdir -p "${signing_dir}"
+          printf '%s\n' "${MODULE_SIGNING_KEY}" > "${signing_dir}/module.key"
+          echo "MODULE_SIGNING_KEY_FILE=${signing_dir}/module.key" >> "${GITHUB_ENV}"
+          echo "MODULE_SIGNING_CERT_FILE=${GITHUB_WORKSPACE}/atomic-hat.der" >> "${GITHUB_ENV}"
+
       # This actually builds the container image
       - name: Build Image
         id: build-image
@@ -73,6 +110,11 @@ jobs:
           just build \
             ${IMAGE_NAME} \
             ${DEFAULT_TAG}
+
+      - name: Remove module signing files
+        if: always()
+        shell: bash
+        run: rm -rf "${RUNNER_TEMP}/atomic-hat-signing"
 
       # This is optional, this provides smaller delta updates
       - name: Rechunk with rpm-ostree

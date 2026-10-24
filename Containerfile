@@ -31,6 +31,8 @@ FROM quay.io/fedora/fedora-kinoite:44
 ## the following RUN directive does all the things required to run "build.sh" as recommended.
 
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    --mount=type=secret,id=module_signing_key \
+    --mount=type=secret,id=module_signing_cert \
     --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=tmpfs,dst=/tmp \
