@@ -1,0 +1,3 @@
+# RTX 20-series and newer, including the RTX 5070 Ti, use the open module.
+# Do not detect the CI runner's GPU when compiling RPM Fusion's sources.
+%_with_kmod_nvidia_open 1
