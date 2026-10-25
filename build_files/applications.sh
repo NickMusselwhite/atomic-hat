@@ -17,3 +17,10 @@ dnf5 install -y 1password
 
 # Distrobox — mutable development environments
 dnf5 install -y --setopt=install_weak_deps=False distrobox
+
+# NVIDIA VA-API decoding and AppImage FUSE 2 compatibility
+dnf5 install -y --setopt=install_weak_deps=False \
+    libva-nvidia-driver \
+    libva-utils \
+    fuse \
+    fuse-libs
