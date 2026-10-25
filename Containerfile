@@ -26,6 +26,10 @@ FROM quay.io/fedora/fedora-kinoite:44
 
 # RUN rm /opt && mkdir /opt
 
+### Image-managed /opt
+# Allow third-party RPMs such as 1Password to install into /opt.
+RUN if [ -L /opt ]; then rm /opt; fi && mkdir -p /opt
+
 ### MODIFICATIONS
 ## make modifications desired in your image and install packages by modifying the build.sh script
 ## the following RUN directive does all the things required to run "build.sh" as recommended.
