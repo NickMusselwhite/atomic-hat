@@ -14,3 +14,6 @@ dnf5 install -y --setopt=install_weak_deps=False \
 rpm --import /etc/pki/rpm-gpg/1password.asc
 
 dnf5 install -y 1password
+
+# Distrobox — mutable development environments
+dnf5 install -y --setopt=install_weak_deps=False distrobox
