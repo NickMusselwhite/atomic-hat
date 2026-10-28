@@ -24,3 +24,27 @@ dnf5 install -y --setopt=install_weak_deps=False \
     libva-utils \
     fuse \
     fuse-libs
+
+# Interactive shell and system information
+dnf5 install -y --setopt=install_weak_deps=False \
+    fish \
+    fastfetch
+
+# Virtualization — Windows 11 VM support
+dnf5 install -y --setopt=install_weak_deps=False \
+    qemu-kvm \
+    libvirt-daemon-kvm \
+    libvirt-client \
+    virt-manager \
+    virt-viewer \
+    virt-install \
+    edk2-ovmf \
+    swtpm \
+    passt \
+    virtiofsd \
+    freerdp
+
+# Sunshine — official LizardByte stable RPM repository
+rpm --import /etc/pki/rpm-gpg/lizardbyte-stable.asc
+
+dnf5 install -y --setopt=install_weak_deps=False Sunshine
