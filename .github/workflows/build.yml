@@ -20,9 +20,67 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.brand_name}}-${{ inputs.stream_name }}
   cancel-in-progress: true
 
+
 jobs:
+  kernel_preflight:
+    name: Check Kinoite kernel compatibility
+    runs-on: ubuntu-26.04
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Install Skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo jq
+
+      - name: Read kernel from remote Kinoite image
+        id: kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          kernel="$(skopeo inspect --config \
+            docker://quay.io/fedora/fedora-kinoite:44 |
+            jq -er '.config.Labels["ostree.linux"]')"
+
+          echo "Kinoite kernel: ${kernel}"
+          echo "version=${kernel}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify matching Fedora development packages
+        shell: bash
+        env:
+          KERNEL_VERSION: ${{ steps.kernel.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          podman run --rm \
+            -e KERNEL_VERSION \
+            registry.fedoraproject.org/fedora:44 \
+            bash -euo pipefail -c '
+              format="%{name}-%{version}-%{release}.%{arch}\n"
+
+              for pkg in kernel-devel kernel-devel-matched; do
+                expected="${pkg}-${KERNEL_VERSION}"
+
+                echo "Checking ${expected}"
+
+                available="$(dnf5 repoquery --available \
+                  --queryformat "${format}" "${pkg}")"
+
+                if ! grep -Fxq "${expected}" <<< "${available}"; then
+                  echo "::error title=Kernel mismatch::Missing ${expected}"
+                  exit 1
+                fi
+
+                echo "MATCH: ${expected}"
+              done
+            '
+
   build_push:
     name: Build and push image
+    needs: kernel_preflight
     runs-on: ubuntu-26.04
 
     permissions:
