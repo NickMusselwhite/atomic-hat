@@ -9,6 +9,30 @@ dnf5 install -y --setopt=install_weak_deps=False \
     mangohud \
     xorg-x11-drv-nvidia-libs.i686
 
+# Browsers — Fedora-maintained Chromium for PWAs and backup browsing.
+dnf5 install -y --setopt=install_weak_deps=False chromium
+
+# Zoom Workplace — official RPM, verified with Zoom's current signing key.
+# Zoom changed signing keys in 2026. Never suppress RPM signature checks.
+zoom_dir="$(mktemp -d)"
+trap 'rm -rf "${zoom_dir}"' EXIT
+curl -fL --retry 3 --output "${zoom_dir}/zoom.rpm" \
+    https://zoom.us/client/latest/zoom_x86_64.rpm
+curl -fL --retry 3 --output "${zoom_dir}/zoom.pub" \
+    'https://zoom.us/linux/download/pubkey'
+# GPG needs a writable home; the bootc build does not provide /root/.gnupg.
+install -d -m 0700 "${zoom_dir}/gnupg"
+zoom_fingerprint="$(gpg --homedir "${zoom_dir}/gnupg" --show-keys --with-colons "${zoom_dir}/zoom.pub" | awk -F: '$1 == "fpr" {print $10; exit}')"
+test "${zoom_fingerprint}" = 84C365D6CC9A4886CA926BCC4F2197399706AC24
+rpm --import "${zoom_dir}/zoom.pub"
+rpm -K "${zoom_dir}/zoom.rpm" | tee "${zoom_dir}/verify.txt"
+grep -Eq 'signatures OK|pgp .* OK' "${zoom_dir}/verify.txt"
+test "$(rpm -qp --qf '%{ARCH}' "${zoom_dir}/zoom.rpm")" = x86_64
+dnf5 install -y "${zoom_dir}/zoom.rpm"
+rpm -q zoom
+rm -rf "${zoom_dir}"
+trap - EXIT
+
 # 1Password — create the reserved groups before RPM scriptlets execute.
 # Persistent declarations are copied from system_files by build.sh.
 sysusers_config=/usr/lib/sysusers.d/atomic-hat-1password.conf
