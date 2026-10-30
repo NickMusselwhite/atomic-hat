@@ -19,7 +19,7 @@ trap 'rm -rf "${zoom_dir}"' EXIT
 curl -fL --retry 3 --output "${zoom_dir}/zoom.rpm" \
     https://zoom.us/client/latest/zoom_x86_64.rpm
 curl -fL --retry 3 --output "${zoom_dir}/zoom.pub" \
-    'https://zoom.us/linux/download/pubkey?version=6-7-5'
+    'https://zoom.us/linux/download/pubkey'
 zoom_fingerprint="$(gpg --show-keys --with-colons "${zoom_dir}/zoom.pub" | awk -F: '$1 == "fpr" {print $10; exit}')"
 test "${zoom_fingerprint}" = 84C365D6CC9A4886CA926BCC4F2197399706AC24
 rpm --import "${zoom_dir}/zoom.pub"
