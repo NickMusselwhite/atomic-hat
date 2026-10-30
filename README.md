@@ -9,6 +9,59 @@ After a successful build on `main`, the published image will be
 `ghcr.io/nickmusselwhite/atomic-hat:latest`. Pull requests build without
 publishing.
 
+## First switch from stock Fedora Kinoite
+
+**NVIDIA first-boot prerequisite:** Stock Kinoite uses an OSTree deployment.
+The initial `rpm-ostree rebase` into this container image does **not** apply
+the image-managed `/usr/lib/bootc/kargs.d` settings. Without these kernel
+arguments, nouveau may claim an NVIDIA GPU before the proprietary user-space
+driver can initialize, causing a black screen at the Plasma login.
+
+Before starting: make a backup, enroll the release NVIDIA module certificate
+in MOK if Secure Boot is enabled, configure Cosign signature verification for
+this image, and pin your working Fedora deployment. The signed-rebase example
+below assumes that verification is configured and the image is accessible.
+
+From stock Kinoite, stage the container image **without rebooting yet**:
+
+```bash
+sudo rpm-ostree rebase \
+  ostree-image-signed:docker://ghcr.io/nickmusselwhite/atomic-hat:latest
+```
+
+Next, still **before the first boot into atomic-hat**, explicitly configure
+the kernel arguments on the default (pending) deployment:
+
+```bash
+sudo rpm-ostree kargs \
+  --append-if-missing=rd.driver.blacklist=nouveau,nova_core \
+  --append-if-missing=modprobe.blacklist=nouveau,nova_core \
+  --append-if-missing=nvidia-drm.modeset=1
+rpm-ostree kargs
+rpm-ostree status
+```
+
+Check that the three arguments appear, the default deployment is atomic-hat,
+and the pinned stock Fedora deployment remains available. Only then reboot.
+After login, check `nvidia-smi`, `mokutil --sb-state`, and `cat /proc/cmdline`.
+
+This explicit step is for the **initial `rpm-ostree` migration**. Subsequent
+image changes should be managed with `bootc upgrade` or `bootc switch`,
+which process the existing `kargs.d` file. Do not disable Secure Boot or
+use an unsigned image reference to work around verification failures.
+
+See [bootc kernel-argument documentation](https://bootc.dev/bootc/building/bootc-kernel-arguments.7.html)
+and the [BlueBuild kargs notes](https://blue-build.org/reference/modules/kargs/).
+
+## OCI image metadata
+
+Clean-source builds already receive OCI title, creation time, description,
+and other labels from `just build`. The version label now has the form
+`44.YYYYMMDD.<GitHub-run-number>-<short-Git-SHA>`; the full commit ID is
+stored in `org.opencontainers.image.revision`. The GitHub workflow checks
+that these labels survive rechunking, so `bootc status --verbose` can show
+the image version. The OCI digest remains the definitive image identifier.
+
 ## ToDo
 - [ ] Sunshine?
 - [ ] VM Software?
