@@ -9,18 +9,13 @@ dnf5 install -y --setopt=install_weak_deps=False \
     mangohud \
     xorg-x11-drv-nvidia-libs.i686
 
-# 1Password — stable GIDs for browser integration and future CLI use.
-# In a bootc image, /etc/group is recreated on the installed system.
-# Reserve the numeric groups in /usr so the installed IDs match the image.
-install -d -m 0755 /usr/lib/sysusers.d
-cat > /usr/lib/sysusers.d/atomic-hat-1password.conf <<'EOF'
-g onepassword 1500
-g onepassword-cli 1600
-EOF
+# 1Password — create the reserved groups before RPM scriptlets execute.
+# Persistent declarations are copied from system_files by build.sh.
+sysusers_config=/usr/lib/sysusers.d/atomic-hat-1password.conf
+test -s "${sysusers_config}"
 
-# Initialize the same GIDs during the build before the RPM scriptlets run.
-# Refuse conflicts rather than silently assigning the wrong numeric owner.
-for spec in 'onepassword:1500' 'onepassword-cli:1600'; do
+# Refuse an unexpected existing name or GID, including either direction.
+for spec in 'onepassword:1500' 'onepassword-cli:1600' 'onepassword-mcp:1700'; do
     name="${spec%%:*}"
     gid="${spec##*:}"
     by_name="$(getent group "${name}" || true)"
@@ -31,20 +26,26 @@ for spec in 'onepassword:1500' 'onepassword-cli:1600'; do
         exit 1
     fi
 done
-systemd-sysusers /usr/lib/sysusers.d/atomic-hat-1password.conf
+systemd-sysusers "${sysusers_config}"
+for spec in 'onepassword:1500' 'onepassword-cli:1600' 'onepassword-mcp:1700'; do
+    name="${spec%%:*}"
+    gid="${spec##*:}"
+    test "$(getent group "${name}" | cut -d: -f3)" = "${gid}"
+done
 
-# Install 1Password from its official signed RPM repository.
+# Let the official RPM configure the helpers and their permission bits.
 rpm --import /etc/pki/rpm-gpg/1password.asc
 dnf5 install -y 1password
 
-# Preserve the permissions set by 1Password's RPM scripts. Only ensure that
-# the browser helper's numeric GID matches the group recreated on first boot.
-browser_helper=/opt/1Password/1Password-BrowserSupport
-test -f "${browser_helper}"
-test "$(stat -c %u "${browser_helper}")" = 0
-test -g "${browser_helper}"
-chgrp 1500 "${browser_helper}"
-test "$(stat -c %g "${browser_helper}")" = 1500
+# Verify the RPM's installed helper ownership/modes; do not modify them.
+# KeyringHelper needs setuid+setgid, BrowserSupport needs setgid.
+for helper in /opt/1Password/1Password-KeyringHelper /opt/1Password/1Password-BrowserSupport; do
+    test -f "${helper}" && test -x "${helper}"
+    test "$(stat -c %u "${helper}")" = 0
+    test "$(stat -c %g "${helper}")" = 1500
+    test -g "${helper}"
+done
+test -u /opt/1Password/1Password-KeyringHelper
 
 # Distrobox — mutable development environments
 dnf5 install -y --setopt=install_weak_deps=False distrobox
