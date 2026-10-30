@@ -205,24 +205,29 @@ jobs:
       #      ${IMAGE_NAME} \
       #      ${DEFAULT_TAG}
 
-      - name: Validate OCI metadata after rechunk
+      - name: Diagnose OCI metadata after rechunk
         shell: bash
         env:
           EXPECTED_VERSION: ${{ steps.oci-metadata.outputs.version }}
         run: |
           set -euo pipefail
-          podman image inspect "${IMAGE_NAME}:${DEFAULT_TAG}" | jq -e \
+          podman image inspect "${IMAGE_NAME}:${DEFAULT_TAG}" | jq -S '
+            .[0].Labels | with_entries(select(
+              .key | startswith("org.opencontainers.image.") or . == "containers.bootc"
+            ))
+          '
+          podman image inspect "${IMAGE_NAME}:${DEFAULT_TAG}" | jq -r \
             --arg version "${EXPECTED_VERSION}" \
             --arg revision "${GITHUB_SHA}" '
               .[0].Labels as $labels |
-              $labels["org.opencontainers.image.version"] == $version and
-              $labels["org.opencontainers.image.revision"] == $revision and
-              ($labels["org.opencontainers.image.title"] | length > 0) and
-              ($labels["org.opencontainers.image.created"] | length > 0) and
-              ($labels["containers.bootc"] | length > 0)
-            '
-          echo "Rechunked image retained version, revision, and bootc metadata."
-
+              [
+                {name: "version", pass: ($labels["org.opencontainers.image.version"] == $version)},
+                {name: "revision", pass: ($labels["org.opencontainers.image.revision"] == $revision)},
+                {name: "title", pass: (($labels["org.opencontainers.image.title"] // "") | length > 0)},
+                {name: "created", pass: (($labels["org.opencontainers.image.created"] // "") | length > 0)},
+                {name: "containers.bootc", pass: (($labels["containers.bootc"] // "") | length > 0)}
+              ] | .[] | "\(.name): \(if .pass then "PASS" else "FAIL" end)"
+            ' -r
       - name: Generate Build Tags
         id: gen-build-tags
         run: |
