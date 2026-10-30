@@ -1,3 +1,5 @@
-# Apply on installation and bootc upgrades, including the existing initramfs.
+# Applied by bootc install/switch/upgrade. Stock Kinoite -> rpm-ostree rebase
+# does NOT process kargs.d: see the README first-switch instructions.
+# Blacklist nouveau early, including when it is present in the initramfs.
 kargs = ["rd.driver.blacklist=nouveau,nova_core", "modprobe.blacklist=nouveau,nova_core", "nvidia-drm.modeset=1"]
 match-architectures = ["x86_64"]
