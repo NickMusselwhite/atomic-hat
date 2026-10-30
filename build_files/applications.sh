@@ -37,15 +37,28 @@ done
 rpm --import /etc/pki/rpm-gpg/1password.asc
 dnf5 install -y 1password
 
-# Verify the RPM's installed helper ownership/modes; do not modify them.
-# KeyringHelper needs setuid+setgid, BrowserSupport needs setgid.
-for helper in /opt/1Password/1Password-KeyringHelper /opt/1Password/1Password-BrowserSupport; do
-    test -f "${helper}" && test -x "${helper}"
-    test "$(stat -c %u "${helper}")" = 0
-    test "$(stat -c %g "${helper}")" = 1500
-    test -g "${helper}"
-done
-test -u /opt/1Password/1Password-KeyringHelper
+# Verify the official RPM's security-sensitive helper permissions.
+# The RPM post-install script sets these; do not modify them here.
+browser_helper=/opt/1Password/1Password-BrowserSupport
+test -f "${browser_helper}" && test -x "${browser_helper}"
+test "$(stat -c %u "${browser_helper}")" = 0
+test "$(stat -c %g "${browser_helper}")" = 1500
+test -g "${browser_helper}"
+
+# MCP support is optional. Only validate the helper when the RPM includes it.
+mcp_helper=/opt/1Password/1password-mcp
+if [[ -e "${mcp_helper}" ]]; then
+    test -f "${mcp_helper}" && test -x "${mcp_helper}"
+    test "$(stat -c %u "${mcp_helper}")" = 0
+    test "$(stat -c %g "${mcp_helper}")" = 1700
+    test -g "${mcp_helper}"
+fi
+
+# Electron bundles its own Chromium sandbox; it requires setuid root.
+sandbox=/opt/1Password/chrome-sandbox
+test -f "${sandbox}" && test -x "${sandbox}"
+test "$(stat -c %u "${sandbox}")" = 0
+test "$(stat -c %a "${sandbox}")" = 4755
 
 # Distrobox — mutable development environments
 dnf5 install -y --setopt=install_weak_deps=False distrobox
