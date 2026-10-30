@@ -186,6 +186,19 @@ ostree-rechunk $target_image=image_name $tag=default_tag:
 
     GRAPHROOT="$(podman info --format '{{ '{{.Store.GraphRoot}}' }}')"
 
+    # --rootfs creates a fresh OCI config; carry over source image labels explicitly.
+    # rpm-ostree compose build-chunked-oci supports repeated --label KEY=VALUE.
+    SOURCE_LABELS_JSON="$(podman image inspect "${target_image}:${tag}" | jq -er '.[0].Labels')"
+    mapfile -t SOURCE_LABELS < <(jq -r '
+      to_entries[]
+      | select(.key | startswith("org.opencontainers.image.") or startswith("io.artifacthub.package."))
+      | "\(.key)=\(.value)"
+    ' <<< "${SOURCE_LABELS_JSON}")
+    RECHUNK_LABEL_ARGS=()
+    for label in "${SOURCE_LABELS[@]}"; do
+      RECHUNK_LABEL_ARGS+=(--label "${label}")
+    done
+
     podman run --rm --pull=never --privileged \
       --mount=type=image,src="${target_image}:${tag}",target=/rpm-ostree \
       --mount=type=bind,src=${GRAPHROOT},target=/run/host-container-storage,rw \
@@ -197,6 +210,7 @@ ostree-rechunk $target_image=image_name $tag=default_tag:
       --format-version=2 \
       --bootc \
       --rootfs /rpm-ostree \
+      "${RECHUNK_LABEL_ARGS[@]}" \
       --output "containers-storage:[overlay@/run/host-container-storage+/run/rpm-ostree-storage]localhost/${target_image}:${tag}"
 
 # Generate Default Tag
