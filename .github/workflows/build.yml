@@ -169,6 +169,19 @@ jobs:
             ${IMAGE_NAME} \
             ${DEFAULT_TAG}
 
+      - name: Record OCI metadata before rechunk
+        id: oci-metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          info="$(podman image inspect "${IMAGE_NAME}:${DEFAULT_TAG}")"
+          version="$(jq -er '.[0].Labels["org.opencontainers.image.version"]' <<< "${info}")"
+          revision="$(jq -er '.[0].Labels["org.opencontainers.image.revision"]' <<< "${info}")"
+          test "${revision}" = "${GITHUB_SHA}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "Image version: ${version}"
+          echo "Git revision: ${revision}"
+
       - name: Remove module signing files
         if: always()
         shell: bash
@@ -191,6 +204,24 @@ jobs:
       #    just rechunk \
       #      ${IMAGE_NAME} \
       #      ${DEFAULT_TAG}
+
+      - name: Validate OCI metadata after rechunk
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ steps.oci-metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+          podman image inspect "${IMAGE_NAME}:${DEFAULT_TAG}" | jq -e \
+            --arg version "${EXPECTED_VERSION}" \
+            --arg revision "${GITHUB_SHA}" '
+              .[0].Labels as $labels |
+              $labels["org.opencontainers.image.version"] == $version and
+              $labels["org.opencontainers.image.revision"] == $revision and
+              ($labels["org.opencontainers.image.title"] | length > 0) and
+              ($labels["org.opencontainers.image.created"] | length > 0) and
+              ($labels["containers.bootc"] | length > 0)
+            '
+          echo "Rechunked image retained version, revision, and bootc metadata."
 
       - name: Generate Build Tags
         id: gen-build-tags
