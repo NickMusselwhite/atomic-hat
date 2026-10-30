@@ -187,7 +187,8 @@ jobs:
         shell: bash
         run: rm -rf "${RUNNER_TEMP}/atomic-hat-signing"
 
-      # This is optional, this provides smaller delta updates
+      # Trial: compare Chunkah performance and bootc image validity against
+      # the existing rpm-ostree rechunker without publishing PR builds.
       - name: Rechunk with Chunkah
         id: rechunk
         run: |
@@ -195,15 +196,13 @@ jobs:
             ${IMAGE_NAME} \
             ${DEFAULT_TAG}
 
-      # If you are feeling adventurous, use the new distro agnostic rechunker
-      # https://github.com/coreos/chunkah
-      # You can delete the Rechunk with rpm-ostree portion then if you use this
-      #- name: Rechunk with Chunkah
-      #  id: rechunk
-      #  run: |
-      #    just rechunk \
-      #      ${IMAGE_NAME} \
-      #      ${DEFAULT_TAG}
+      - name: Validate rechunked bootc image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${IMAGE_NAME}:${DEFAULT_TAG}"
+          test "$(podman image inspect "$image" --format '{{ index .Config.Labels "containers.bootc" }}')" = 1
+          podman run --rm --entrypoint bootc "$image" container lint
 
       - name: Diagnose OCI metadata after rechunk
         shell: bash
