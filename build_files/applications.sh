@@ -20,7 +20,9 @@ curl -fL --retry 3 --output "${zoom_dir}/zoom.rpm" \
     https://zoom.us/client/latest/zoom_x86_64.rpm
 curl -fL --retry 3 --output "${zoom_dir}/zoom.pub" \
     'https://zoom.us/linux/download/pubkey'
-zoom_fingerprint="$(gpg --show-keys --with-colons "${zoom_dir}/zoom.pub" | awk -F: '$1 == "fpr" {print $10; exit}')"
+# GPG needs a writable home; the bootc build does not provide /root/.gnupg.
+install -d -m 0700 "${zoom_dir}/gnupg"
+zoom_fingerprint="$(gpg --homedir "${zoom_dir}/gnupg" --show-keys --with-colons "${zoom_dir}/zoom.pub" | awk -F: '$1 == "fpr" {print $10; exit}')"
 test "${zoom_fingerprint}" = 84C365D6CC9A4886CA926BCC4F2197399706AC24
 rpm --import "${zoom_dir}/zoom.pub"
 rpm -K "${zoom_dir}/zoom.rpm" | tee "${zoom_dir}/verify.txt"
