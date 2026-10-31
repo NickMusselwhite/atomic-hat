@@ -169,6 +169,19 @@ jobs:
             ${IMAGE_NAME} \
             ${DEFAULT_TAG}
 
+      - name: Record OCI metadata before rechunk
+        id: oci-metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          info="$(podman image inspect "${IMAGE_NAME}:${DEFAULT_TAG}")"
+          version="$(jq -er '.[0].Labels["org.opencontainers.image.version"]' <<< "${info}")"
+          revision="$(jq -er '.[0].Labels["org.opencontainers.image.revision"]' <<< "${info}")"
+          test "${revision}" = "${GITHUB_SHA}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "Image version: ${version}"
+          echo "Git revision: ${revision}"
+
       - name: Remove module signing files
         if: always()
         shell: bash
@@ -191,6 +204,31 @@ jobs:
           test "$(podman image inspect "$image" --format '{{ index .Config.Labels "containers.bootc" }}')" = 1
           podman run --rm --entrypoint bootc "$image" container lint
 
+      - name: Diagnose OCI metadata after rechunk
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ steps.oci-metadata.outputs.version }}
+        run: |
+          set -euo pipefail
+          podman image inspect "${IMAGE_NAME}:${DEFAULT_TAG}" | jq -S '
+            .[0].Labels | with_entries(select(
+              .key | startswith("org.opencontainers.image.") or . == "containers.bootc"
+            ))
+          '
+          podman image inspect "${IMAGE_NAME}:${DEFAULT_TAG}" | jq -er \
+            --arg version "${EXPECTED_VERSION}" \
+            --arg revision "${GITHUB_SHA}" '
+              .[0].Labels as $labels |
+              [
+                {name: "version", pass: ($labels["org.opencontainers.image.version"] == $version)},
+                {name: "revision", pass: ($labels["org.opencontainers.image.revision"] == $revision)},
+                {name: "title", pass: (($labels["org.opencontainers.image.title"] // "") | length > 0)},
+                {name: "created", pass: (($labels["org.opencontainers.image.created"] // "") | length > 0)},
+                {name: "containers.bootc", pass: (($labels["containers.bootc"] // "") | length > 0)}
+              ] as $checks |
+              ($checks | map("\(.name): \(if .pass then "PASS" else "FAIL" end)") | .[]),
+              ($checks | all(.pass))
+            '
       - name: Generate Build Tags
         id: gen-build-tags
         run: |
