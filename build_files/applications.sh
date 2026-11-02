@@ -99,6 +99,16 @@ dnf5 install -y --setopt=install_weak_deps=False \
     fish \
     fastfetch
 
+# Desktop utilities, diagnostics, and gaming tools
+dnf5 install -y --setopt=install_weak_deps=False \
+    btop \
+    inxi \
+    pavucontrol \
+    meld \
+    ripgrep \
+    micro \
+    gamescope
+
 # Virtualization — Windows 11 VM support
 dnf5 install -y --setopt=install_weak_deps=False \
     qemu-kvm \
