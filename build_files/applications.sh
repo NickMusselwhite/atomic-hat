@@ -103,7 +103,6 @@ dnf5 install -y --setopt=install_weak_deps=False \
 dnf5 install -y --setopt=install_weak_deps=False \
     btop \
     inxi \
-    pavucontrol \
     meld \
     ripgrep \
     micro \
