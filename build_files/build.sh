@@ -23,7 +23,7 @@ if [[ -z "${kernel}" || "${kernel}" == *$'\n'* ]]; then
 fi
 
 # Stock Kinoite does not enable RPM Fusion. Retain RPM signature checking.
-dnf5 install -y --setopt=optional_metadata_types=filelists \
+dnf5 install -y \
     "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${fedora_version}.noarch.rpm" \
     "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${fedora_version}.noarch.rpm"
 
