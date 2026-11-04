@@ -122,7 +122,7 @@ dnf5 install -y --setopt=install_weak_deps=False \
     virtiofsd \
     freerdp
 
-# Sunshine — official LizardByte stable RPM repository
-rpm --import /etc/pki/rpm-gpg/lizardbyte-stable.asc
+# Sunshine — official LizardByte beta Cloudsmith RPM repository
+rpm --import /etc/pki/rpm-gpg/lizardbyte-beta.asc
 
 dnf5 install -y --setopt=install_weak_deps=False Sunshine
