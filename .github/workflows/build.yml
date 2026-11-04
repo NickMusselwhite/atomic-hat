@@ -42,7 +42,7 @@ jobs:
           set -euo pipefail
 
           kernel="$(skopeo inspect --config \
-            docker://quay.io/fedora/fedora-kinoite:44 |
+            docker://quay.io/fedora/fedora-kinoite:45 |
             jq -er '.config.Labels["ostree.linux"]')"
 
           echo "Kinoite kernel: ${kernel}"
@@ -57,7 +57,7 @@ jobs:
 
           podman run --rm \
             -e KERNEL_VERSION \
-            registry.fedoraproject.org/fedora:44 \
+            registry.fedoraproject.org/fedora:45 \
             bash -euo pipefail -c '
               format="%{name}-%{version}-%{release}.%{arch}\n"
 

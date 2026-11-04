@@ -10,8 +10,8 @@ cp -avf /ctx/system_files/. /
 
 fedora_version="$(rpm -E %fedora)"
 architecture="$(rpm -E '%{_arch}')"
-if [[ "${fedora_version}" != 44 || "${architecture}" != x86_64 ]]; then
-    echo 'This package selection targets Fedora 44 on x86_64.' >&2
+if [[ "${fedora_version}" != 45 || "${architecture}" != x86_64 ]]; then
+    echo 'This package selection targets Fedora 45 on x86_64.' >&2
     exit 1
 fi
 
