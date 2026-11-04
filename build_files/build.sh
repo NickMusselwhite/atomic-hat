@@ -170,6 +170,6 @@ rm -rf -- /run/akmods /run/dnf /run/gluster /run/selinux-policy
 # Report anything remaining so additional cleanup can be reviewed separately.
 # These paths are printed, not their contents; exclude the secrets mount.
 echo 'Remaining /run paths after build cleanup:'
-find /run -mindepth 1 -maxdepth 2 \\
+find /run -mindepth 1 -maxdepth 2 \
     ! -path /run/secrets ! -path '/run/secrets/*' -print | sort
 
