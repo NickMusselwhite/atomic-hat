@@ -162,3 +162,21 @@ systemctl enable podman.socket
 rm -f /etc/pki/akmods/private/private_key.priv
 dnf5 clean all
 
+# Clean transient state created by RPM scriptlets and build tools before the
+# current Containerfile RUN layer is committed. Never remove /run/secrets:
+# Podman mounts NVIDIA signing secrets there for the duration of this RUN.
+rm -rf -- /run/akmods /run/dnf /run/gluster /run/selinux-policy
+
+# libselinux packages an empty /run/setrans directory, which is runtime-only
+# and can be recreated through its tmpfiles.d configuration on boot.
+# Use rmdir so a nonempty directory fails instead of silently losing data.
+if [[ -d /run/setrans ]]; then
+    rmdir -- /run/setrans
+fi
+
+# Report anything remaining so additional cleanup can be reviewed separately.
+# These paths are printed, not their contents; exclude the secrets mount.
+echo 'Remaining /run paths after build cleanup:'
+find /run -mindepth 1 -maxdepth 2 \
+    ! -path /run/secrets ! -path '/run/secrets/*' -print | sort
+
