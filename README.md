@@ -89,6 +89,22 @@ occurrence is harmless without checking its details.
   and the relevant `/etc/fstab` entries if mount options are in question;
   do not assume requested options were applied.
 
+- **`systemd-tmpfiles-setup.service` logs path/permission errors:** On
+  the inspected Atomic installation, `/home`, `/srv`, and `/root` are
+  symlinks to `/var/home`, `/var/srv`, and `/var/roothome`. Stock tmpfiles
+  rules can therefore report `already exists and is not a directory`.
+  The stock systemd rule `z / 555 - - -` in
+  `/usr/lib/tmpfiles.d/root.conf` can also log
+  `fchmod() of / failed: Read-only file system` against the immutable
+  ComposeFS root. The observed service still finished as `active (exited)`,
+  despite a nonzero tmpfiles process exit status. These messages are
+  expected **only if the symlink targets exist, writable paths work, and
+  no other tmpfiles operations are failing**. Check with
+  `systemctl status systemd-tmpfiles-setup.service`,
+  `ls -ld /home /srv /root /var/home /var/srv /var/roothome`, and
+  `sudo systemd-tmpfiles --cat-config`. Do not change permissions on
+  the immutable root just to silence the warning.
+
 These failures can make `systemctl is-system-running` return `degraded`.
 Inspect `systemctl --failed` and `journalctl -b -p err` for **additional**
 failures rather than treating every degraded boot as expected. Neither
