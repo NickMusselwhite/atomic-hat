@@ -62,6 +62,38 @@ stored in `org.opencontainers.image.revision`. The GitHub workflow checks
 that these labels survive rechunking, so `bootc status --verbose` can show
 the image version. The OCI digest remains the definitive image identifier.
 
+## Known boot-time warnings and expected failures
+
+The following messages have been observed on atomic-hat systems. They can be
+benign **in the circumstances described below**; do not assume every future
+occurrence is harmless without checking its details.
+
+- **`akmods-keygen@akmods-keygen.service` fails:** NVIDIA kernel modules are
+  signed during the image build. The deployed public certificate is enrolled in
+  MOK, while the private signing key is deliberately **not** shipped to the
+  installed system. Fedora's key-generation service may therefore report
+  `BROKEN SYMLINK(S) TO THE DEFAULT KEY PAIR` with
+  `/etc/pki/akmods/private/private_key.priv: BROKEN`. This is expected
+  **when the prebuilt NVIDIA module is signed, its certificate is enrolled, and
+  the driver loads**. Check with `modinfo -F signer nvidia`, `nvidia-smi`, and
+  `sudo mokutil --test-key /etc/pki/akmods/certs/public_key.der`.
+  Never distribute the private signing key just to silence this service.
+  Local kernel-module builds/signing may require additional setup.
+
+- **`systemd-remount-fs.service` fails:** On the ComposeFS-based immutable
+  root, systemd can log
+  `mount: /: fsconfig() failed: overlay: No changes allowed in reconfigure`
+  and `/usr/bin/mount for / exited with exit status 32`.
+  This can be a nonfatal attempt to remount the immutable root, not evidence
+  of filesystem corruption. Check `findmnt -no TARGET,SOURCE,FSTYPE,OPTIONS /sysroot`
+  and the relevant `/etc/fstab` entries if mount options are in question;
+  do not assume requested options were applied.
+
+These failures can make `systemctl is-system-running` return `degraded`.
+Inspect `systemctl --failed` and `journalctl -b -p err` for **additional**
+failures rather than treating every degraded boot as expected. Neither
+service is masked or otherwise modified by this documentation.
+
 ## ToDo
 - [ ] Sunshine?
 - [ ] VM Software?
