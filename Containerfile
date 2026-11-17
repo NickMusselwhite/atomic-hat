@@ -3,8 +3,9 @@ FROM scratch AS ctx
 COPY build_files /
 COPY system_files /system_files
 
-# Base Image
-FROM quay.io/fedora/fedora-kinoite:45
+# Base Image: CI overrides this with the digest verified by kernel_preflight.
+ARG BASE_IMAGE=quay.io/fedora/fedora-kinoite:45
+FROM ${BASE_IMAGE}
 ## Other possible base images include:
 # FROM ghcr.io/ublue-os/bazzite:testing
 # FROM ghcr.io/ublue-os/aurora:stable
