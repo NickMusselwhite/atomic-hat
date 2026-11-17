@@ -110,8 +110,30 @@ jobs:
                 echo "AVAILABLE: ${pkg}"
               done
 
-              # A later change will check matching driver versions and DNF
-              # dependency resolution. This first step only checks presence.
+              # Both packages must offer at least one identical version-release.
+              # Checking names alone would miss a temporarily out-of-sync mirror.
+              # Compare the full RPM version-release (not just the driver number)
+              # while keeping the existing package-presence checks above.
+              akmod_versions="$(dnf5 repoquery --available \
+                --queryformat "%{version}-%{release}" akmod-nvidia | sort -u)"
+              driver_versions="$(dnf5 repoquery --available \
+                --queryformat "%{version}-%{release}" xorg-x11-drv-nvidia | sort -u)"
+
+              # comm outputs the intersection of two sorted lists.
+              matching_versions="$(comm -12 \
+                <(printf "%s\\n" "${akmod_versions}") \
+                <(printf "%s\\n" "${driver_versions}"))"
+
+              if [[ -z "${matching_versions}" ]]; then
+                echo "::error title=NVIDIA version mismatch::akmod-nvidia and xorg-x11-drv-nvidia have no matching version-release"
+                echo "akmod-nvidia: ${akmod_versions}"
+                echo "xorg-x11-drv-nvidia: ${driver_versions}"
+                exit 1
+              fi
+
+              echo "MATCHING NVIDIA VERSION(S): ${matching_versions}"
+
+              # DNF dependency resolution remains a separate future check.
             '
 
   build_push:
