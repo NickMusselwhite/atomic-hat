@@ -136,6 +136,11 @@ build $target_image=image_name $tag=default_tag:
 
     # This actually builds the image!
     PODMAN_BUILD_ARGS=("${BUILD_ARGS[@]}" "${LABELS[@]}" --pull=newer --tag "${target_image}:${tag}" --file Containerfile)
+    # In CI, use the exact base digest that passed the preflight job.
+    # Local builds retain the Containerfile's default Fedora 45 tag.
+    if [[ -n "${BASE_IMAGE:-}" ]]; then
+        PODMAN_BUILD_ARGS+=(--build-arg "BASE_IMAGE=${BASE_IMAGE}")
+    fi
 
     podman build "${PODMAN_BUILD_ARGS[@]}" .
 
