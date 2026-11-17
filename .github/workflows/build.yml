@@ -78,6 +78,42 @@ jobs:
               done
             '
 
+
+      - name: Check RPM Fusion NVIDIA package availability
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Check availability before the expensive NVIDIA compilation starts.
+          # Use a disposable Fedora 45 container so these repository checks
+          # cannot modify the GitHub runner or the final Atomic Hat image.
+          podman run --rm registry.fedoraproject.org/fedora:45 \
+            bash -euo pipefail -c '
+              # Stock Fedora does not enable RPM Fusion. Use the same
+              # repository-release packages as build_files/build.sh.
+              dnf5 install -y \
+                https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-45.noarch.rpm \
+                https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-45.noarch.rpm
+
+              # A successful repoquery alone does not prove a package exists:
+              # it can exit successfully with zero matching packages.
+              for pkg in akmod-nvidia xorg-x11-drv-nvidia; do
+                echo "Checking RPM Fusion package: ${pkg}"
+                available="$(dnf5 repoquery --available \
+                  --queryformat "%{name}" "${pkg}")"
+
+                if ! grep -Fxq "${pkg}" <<< "${available}"; then
+                  echo "::error title=RPM Fusion package unavailable::Missing ${pkg}"
+                  exit 1
+                fi
+
+                echo "AVAILABLE: ${pkg}"
+              done
+
+              # A later change will check matching driver versions and DNF
+              # dependency resolution. This first step only checks presence.
+            '
+
   build_push:
     name: Build and push image
     needs: kernel_preflight
