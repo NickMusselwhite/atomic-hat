@@ -133,7 +133,33 @@ jobs:
 
               echo "MATCHING NVIDIA VERSION(S): ${matching_versions}"
 
-              # DNF dependency resolution remains a separate future check.
+              # Ask DNF to resolve the same NVIDIA package set as build.sh,
+              # without downloading or installing the driver. --assumeno shows
+              # the transaction, then intentionally declines it.
+              #
+              # IMPORTANT: DNF may return status 1 for this expected refusal.
+              # Accept only a displayed transaction summary plus the explicit
+              # cancellation message; real solver errors must fail preflight.
+              if transaction="$(LC_ALL=C dnf5 --assumeno \
+                --setopt=install_weak_deps=False install \
+                akmod-nvidia \
+                xorg-x11-drv-nvidia \
+                xorg-x11-drv-nvidia-cuda \
+                xorg-x11-drv-nvidia-power 2>&1)"; then
+                status=0
+              else
+                status=$?
+              fi
+
+              echo "${transaction}"
+              if [[ ${status} -eq 1 ]] &&
+                 grep -Fq "Transaction Summary:" <<< "${transaction}" &&
+                 grep -Eq "^Operation aborted( by the user)?\\.$" <<< "${transaction}"; then
+                echo "PASS: DNF resolved the NVIDIA dependencies (installation declined)"
+              else
+                echo "::error title=NVIDIA dependency resolution::Unexpected DNF result (exit ${status})"
+                exit 1
+              fi
             '
 
   build_push:
