@@ -29,7 +29,13 @@ jobs:
     permissions:
       contents: read
 
+    outputs:
+      base_image: ${{ steps.kernel.outputs.base_image }}
+
     steps:
+      - name: Checkout preflight script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
       - name: Install Skopeo
         run: |
           sudo apt-get update
@@ -41,47 +47,38 @@ jobs:
         run: |
           set -euo pipefail
 
+          source_image="quay.io/fedora/fedora-kinoite:45"
+          image_digest="$(skopeo inspect "docker://${source_image}" | jq -er '.Digest')"
+          base_image="quay.io/fedora/fedora-kinoite@${image_digest}"
           kernel="$(skopeo inspect --config \
-            docker://quay.io/fedora/fedora-kinoite:45 |
+            "docker://${base_image}" |
             jq -er '.config.Labels["ostree.linux"]')"
 
+          [[ "${kernel}" == *fc45.x86_64 ]]
+          echo "Kinoite base: ${base_image}"
           echo "Kinoite kernel: ${kernel}"
+          echo "base_image=${base_image}" >> "$GITHUB_OUTPUT"
           echo "version=${kernel}" >> "$GITHUB_OUTPUT"
 
-      - name: Verify matching Fedora development packages
+      - name: Verify matching kernel and NVIDIA packages
         shell: bash
         env:
           KERNEL_VERSION: ${{ steps.kernel.outputs.version }}
         run: |
           set -euo pipefail
-
           podman run --rm \
             -e KERNEL_VERSION \
+            -v "${PWD}/.github/scripts/check-nvidia-packages.sh:/check-nvidia-packages.sh:ro" \
             registry.fedoraproject.org/fedora:45 \
-            bash -euo pipefail -c '
-              format="%{name}-%{version}-%{release}.%{arch}\n"
-
-              for pkg in kernel-devel kernel-devel-matched; do
-                expected="${pkg}-${KERNEL_VERSION}"
-
-                echo "Checking ${expected}"
-
-                available="$(dnf5 repoquery --available \
-                  --queryformat "${format}" "${pkg}")"
-
-                if ! grep -Fxq "${expected}" <<< "${available}"; then
-                  echo "::error title=Kernel mismatch::Missing ${expected}"
-                  exit 1
-                fi
-
-                echo "MATCH: ${expected}"
-              done
-            '
+            bash /check-nvidia-packages.sh
 
   build_push:
     name: Build and push image
     needs: kernel_preflight
     runs-on: ubuntu-26.04
+
+    env:
+      BASE_IMAGE: ${{ needs.kernel_preflight.outputs.base_image }}
 
     permissions:
       contents: read
