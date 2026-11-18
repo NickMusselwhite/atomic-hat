@@ -80,6 +80,18 @@ RUN set -eu; \
     done; \
     bootc container lint
 
+# Install the full Atomic Hat desktop application set into the clean runtime.
+# Use the same installer as the existing builder; do not duplicate its list.
+# Keep this separate from the NVIDIA-only check so failures are easy to locate.
+# Also make /opt image-managed, as the working image does for 1Password.
+RUN if [ -L /opt ]; then rm /opt; fi && mkdir -p /opt
+RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
+    --mount=type=cache,dst=/var/cache \
+    --mount=type=cache,dst=/var/log \
+    --mount=type=tmpfs,dst=/tmp \
+    bash /ctx/runtime-apps.sh
+RUN bootc container lint
+
 # Experimental handoff: keep the runtime identical to the validated builder.
 # Later we will replace this inheritance with a clean Fedora runtime stage.
 FROM nvidia-builder AS final
