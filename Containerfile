@@ -92,6 +92,6 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     bash /ctx/runtime-apps.sh
 RUN bootc container lint
 
-# Experimental handoff: keep the runtime identical to the validated builder.
-# Later we will replace this inheritance with a clean Fedora runtime stage.
-FROM nvidia-builder AS final
+# Experimental final image is the clean runtime, not the NVIDIA builder.
+# Pull request builds validate this stage without publishing to GHCR.
+FROM runtime-test AS final
