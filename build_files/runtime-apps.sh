@@ -36,13 +36,16 @@ systemctl enable podman.socket
 
 # Check a representative set of installed applications and media packages.
 # The installation commands above remain the source of truth for the full set.
-rpm -q ffmpeg ffmpeg-libs mesa-va-drivers-freeworld \
+rpm -q bootc kernel-core plasma-workspace mesa-dri-drivers \
+    ffmpeg ffmpeg-libs mesa-va-drivers-freeworld \
     mesa-vulkan-drivers-freeworld tmux steam chromium zoom \
     1password distrobox fish fastfetch qemu-kvm virt-manager Sunshine \
     xorg-x11-drv-nvidia-libs.i686 libva-nvidia-driver
-# Let grep read the complete encoder listing; grep -q can trigger SIGPIPE
-# in ffmpeg under pipefail when it exits after the first match.
-ffmpeg -hide_banner -encoders | grep 'libx264'
+# Capture the full listing first so grep -q cannot SIGPIPE ffmpeg.
+ffmpeg -hide_banner -encoders > /tmp/atomic-hat-encoders.txt
+grep -q 'libx264' /tmp/atomic-hat-encoders.txt
+grep -q 'h264_nvenc' /tmp/atomic-hat-encoders.txt
+rm -f /tmp/atomic-hat-encoders.txt
 command -v nvidia-smi
 echo 'PASS: clean NVIDIA runtime installed Atomic Hat desktop applications'
 
