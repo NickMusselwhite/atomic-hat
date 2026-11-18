@@ -106,6 +106,21 @@ if (( ${#module_rpms[@]} == 0 )); then
     echo 'The NVIDIA build did not produce a kernel module RPM.' >&2
     exit 1
 fi
+
+# The signed kmod RPM is intended to work without the NVIDIA build toolchain.
+# Check the freshly built RPM rather than an older package installed on a host.
+# These are direct RPM requirements; full transaction dependencies are checked
+# separately by DNF when the RPM is installed below.
+for module_rpm in "${module_rpms[@]}"; do
+    requirements="$(rpm -qp --requires "${module_rpm}")"
+    if grep -Eq '^(akmods|akmod-nvidia|kernel-devel(-matched|-uname-r)?|gcc|make|rpm-build|dwarves|kmodtool|xorg-x11-drv-nvidia-kmodsrc)([[:space:]]|$)' <<< "${requirements}"; then
+        echo "Unexpected build-only dependency in ${module_rpm}:" >&2
+        echo "${requirements}" >&2
+        exit 1
+    fi
+    echo "PASS: ${module_rpm} has no direct build-tool dependencies"
+done
+
 dnf5 install -y "${module_rpms[@]}"
 depmod -a "${kernel}"
 
