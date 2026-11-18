@@ -40,7 +40,9 @@ rpm -q ffmpeg ffmpeg-libs mesa-va-drivers-freeworld \
     mesa-vulkan-drivers-freeworld tmux steam chromium zoom \
     1password distrobox fish fastfetch qemu-kvm virt-manager Sunshine \
     xorg-x11-drv-nvidia-libs.i686 libva-nvidia-driver
-ffmpeg -hide_banner -encoders | grep -q libx264
+# Let grep read the complete encoder listing; grep -q can trigger SIGPIPE
+# in ffmpeg under pipefail when it exits after the first match.
+ffmpeg -hide_banner -encoders | grep 'libx264'
 command -v nvidia-smi
 echo 'PASS: clean NVIDIA runtime installed Atomic Hat desktop applications'
 
