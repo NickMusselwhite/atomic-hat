@@ -266,19 +266,8 @@ jobs:
           echo "Image version: ${version}"
           echo "Git revision: ${revision}"
 
-      - name: Test NVIDIA RPM installation in clean Kinoite
-        # This branch is a draft experiment. Build the target explicitly:
-        # a successful default "final" build does not test runtime-test.
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          set -euo pipefail
-          podman build --target runtime-test \
-            --secret id=module_signing_key,src="${MODULE_SIGNING_KEY_FILE}" \
-            --secret id=module_signing_cert,src="${MODULE_SIGNING_CERT_FILE}" \
-            --file Containerfile \
-            --tag atomic-hat:runtime-test .
-          echo "PASS: clean Kinoite installed the signed NVIDIA RPM without build tools"
+      # Build Image now builds final -> runtime-test, including all applications.
+      # Do not build runtime-test a second time; that duplicated installation.
 
       - name: Remove module signing files
         if: always()
