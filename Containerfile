@@ -4,7 +4,7 @@ COPY build_files /
 COPY system_files /system_files
 
 # Base Image
-FROM quay.io/fedora/fedora-kinoite:45
+FROM quay.io/fedora/fedora-kinoite:45 AS nvidia-builder
 ## Other possible base images include:
 # FROM ghcr.io/ublue-os/bazzite:testing
 # FROM ghcr.io/ublue-os/aurora:stable
@@ -46,3 +46,6 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
 ## Verify final image and contents are correct.
 RUN bootc container lint
 
+# Experimental handoff: keep the runtime identical to the validated builder.
+# Later we will replace this inheritance with a clean Fedora runtime stage.
+FROM nvidia-builder AS final
