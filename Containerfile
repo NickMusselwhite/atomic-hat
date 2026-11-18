@@ -46,6 +46,40 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
 ## Verify final image and contents are correct.
 RUN bootc container lint
 
+# Experimental installation test: do not publish this stage.
+# Use a fresh Kinoite base so NVIDIA cannot rely on the builder's toolchain.
+FROM quay.io/fedora/fedora-kinoite:45 AS runtime-test
+
+# Copy the RPM signed and exported by the existing NVIDIA builder stage.
+COPY --from=nvidia-builder /usr/share/atomic-hat/build-artifacts/nvidia/ /usr/share/atomic-hat/build-artifacts/nvidia/
+
+# Install the same RPM Fusion repos and NVIDIA userspace packages as build.sh.
+# Install the local kmod RPM in the same DNF transaction. Its kernel-uname-r
+# requirement must be satisfied by the kernel in this clean Kinoite image.
+RUN --mount=type=cache,dst=/var/cache \
+    dnf5 install -y \
+      https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-45.noarch.rpm \
+      https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-45.noarch.rpm && \
+    dnf5 install -y --exclude='kernel*' --setopt=install_weak_deps=False \
+      /usr/share/atomic-hat/build-artifacts/nvidia/kmod-nvidia-*.rpm \
+      xorg-x11-drv-nvidia \
+      xorg-x11-drv-nvidia-cuda \
+      xorg-x11-drv-nvidia-power
+
+# Confirm that NVIDIA installed and the compilation toolchain did not.
+# Check absent packages individually: rpm -q with multiple arguments returns
+# failure even if only ONE package is absent, which would give a false pass.
+RUN set -eu; \
+    test -n "$(rpm -qa 'kmod-nvidia-*')"; \
+    rpm -q xorg-x11-drv-nvidia xorg-x11-drv-nvidia-cuda xorg-x11-drv-nvidia-power; \
+    for pkg in akmods akmod-nvidia kernel-devel kernel-devel-matched gcc make rpm-build dwarves xorg-x11-drv-nvidia-kmodsrc; do \
+      if rpm -q "$pkg" >/dev/null 2>&1; then \
+        echo "Unexpected build-only package in runtime-test: $pkg" >&2; \
+        exit 1; \
+      fi; \
+    done; \
+    bootc container lint
+
 # Experimental handoff: keep the runtime identical to the validated builder.
 # Later we will replace this inheritance with a clean Fedora runtime stage.
 FROM nvidia-builder AS final
