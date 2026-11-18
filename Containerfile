@@ -90,6 +90,21 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/log \
     --mount=type=tmpfs,dst=/tmp \
     bash /ctx/runtime-apps.sh
+
+# Clean the actual runtime filesystem after the /var/log cache mount is gone.
+# Removing /var/log/dnf5.log inside runtime-apps.sh only affects its cache
+# mount, not a log created in the earlier NVIDIA RPM installation layer.
+# DNF's per-repository countme files are ephemeral and rebuilt as needed.
+# /run/setrans is a runtime-only directory; fail rather than discard content
+# if a package unexpectedly populated it.
+RUN set -eu; \
+    rm -f -- /var/log/dnf5.log; \
+    rm -rf -- /var/lib/dnf/repos; \
+    if [ -d /run/setrans ]; then rmdir /run/setrans; fi; \
+    test ! -e /var/log/dnf5.log; \
+    test ! -e /var/lib/dnf/repos; \
+    test ! -e /run/setrans
+
 RUN bootc container lint
 
 # Experimental final image is the clean runtime, not the NVIDIA builder.
