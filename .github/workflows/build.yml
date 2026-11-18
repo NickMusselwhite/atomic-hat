@@ -245,13 +245,46 @@ jobs:
           echo "MODULE_SIGNING_KEY_FILE=${signing_dir}/module.key" >> "${GITHUB_ENV}"
           echo "MODULE_SIGNING_CERT_FILE=${GITHUB_WORKSPACE}/atomic-hat.der" >> "${GITHUB_ENV}"
 
-      # This actually builds the container image
-      - name: Build Image
-        id: build-image
+      # Give compilation/signing their own Actions log. The subsequent
+      # build reuses this stage's layers in the same Podman storage.
+      - name: Build signed NVIDIA kernel modules
+        shell: bash
         run: |
+          set -euo pipefail
+          podman build --layers=true --pull=newer --target nvidia-builder \
+            --secret "id=module_signing_key,src=${MODULE_SIGNING_KEY_FILE}" \
+            --secret "id=module_signing_cert,src=${MODULE_SIGNING_CERT_FILE}" \
+            --file Containerfile \
+            --tag "${IMAGE_NAME}:nvidia-builder-ci" .
+
+      - name: Build final Atomic Hat desktop image
+        id: build-image
+        shell: bash
+        run: |
+          set -euo pipefail
           just build \
-            ${IMAGE_NAME} \
-            ${DEFAULT_TAG}
+            "${IMAGE_NAME}" \
+            "${DEFAULT_TAG}"
+
+      # Validate the actual final image, never just the NVIDIA builder.
+      - name: Verify final NVIDIA modules and applications
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman run --rm \
+            --entrypoint /bin/bash \
+            -v "${GITHUB_WORKSPACE}/build_files/validate-final.sh:/run/atomic-hat-validate.sh:ro" \
+            "${IMAGE_NAME}:${DEFAULT_TAG}" /run/atomic-hat-validate.sh
+
+      # Snapshot every installed RPM (with version) before rechunking.
+      - name: Record final RPM inventory before rechunk
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman run --rm --entrypoint rpm "${IMAGE_NAME}:${DEFAULT_TAG}" \
+            -qa --qf '%{NAME}.%{ARCH} %{EPOCHNUM}:%{VERSION}-%{RELEASE}\n' \
+            | sort > "${RUNNER_TEMP}/atomic-hat-rpms-before.txt"
+          echo "Recorded $(wc -l < "${RUNNER_TEMP}/atomic-hat-rpms-before.txt") RPMs"
 
       - name: Record OCI metadata before rechunk
         id: oci-metadata
@@ -290,6 +323,27 @@ jobs:
           image="${IMAGE_NAME}:${DEFAULT_TAG}"
           test "$(podman image inspect "$image" --format '{{ index .Config.Labels "containers.bootc" }}')" = 1
           podman run --rm --entrypoint bootc "$image" container lint
+
+      - name: Verify rechunked NVIDIA modules and applications
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman run --rm \
+            --entrypoint /bin/bash \
+            -v "${GITHUB_WORKSPACE}/build_files/validate-final.sh:/run/atomic-hat-validate.sh:ro" \
+            "${IMAGE_NAME}:${DEFAULT_TAG}" /run/atomic-hat-validate.sh
+
+      - name: Compare RPM inventory after rechunk
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman run --rm --entrypoint rpm "${IMAGE_NAME}:${DEFAULT_TAG}" \
+            -qa --qf '%{NAME}.%{ARCH} %{EPOCHNUM}:%{VERSION}-%{RELEASE}\n' \
+            | sort > "${RUNNER_TEMP}/atomic-hat-rpms-after.txt"
+          diff -u \
+            "${RUNNER_TEMP}/atomic-hat-rpms-before.txt" \
+            "${RUNNER_TEMP}/atomic-hat-rpms-after.txt"
+          echo "PASS: all installed RPMs and versions survived rechunking"
 
       - name: Diagnose OCI metadata after rechunk
         shell: bash
