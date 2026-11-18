@@ -266,6 +266,18 @@ jobs:
             "${IMAGE_NAME}" \
             "${DEFAULT_TAG}"
 
+      # Read-only audit of package-owned and unowned /var/lib directories.
+      # Use this output to decide which remaining bootc lint warnings need
+      # tmpfiles.d rules versus narrowly targeted cleanup.
+      - name: Audit final runtime /var/lib directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman run --rm \
+            --entrypoint /bin/bash \
+            -v "${GITHUB_WORKSPACE}/build_files/audit-var.sh:/run/atomic-hat-audit-var.sh:ro" \
+            "${IMAGE_NAME}:${DEFAULT_TAG}" /run/atomic-hat-audit-var.sh
+
       # Validate the actual final image, never just the NVIDIA builder.
       - name: Verify final NVIDIA modules and applications
         shell: bash
