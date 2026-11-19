@@ -18,6 +18,29 @@ if [[ -z "$expected_signer" ]]; then
     echo 'The installed NVIDIA module has no signing identity.' >&2
     exit 1
 fi
+# The runtime must contain the *same* public certificate that the builder
+# used to verify the module signatures cryptographically. We copy it straight
+# from nvidia-builder and check its identity against the installed modules.
+# Full PKCS#7/CMS signature verification remains in build_files/build.sh.
+certificate=/usr/share/atomic-hat/certs/nvidia-module-signing.der
+if [[ ! -s "$certificate" ]]; then
+    echo "Missing NVIDIA module public certificate: $certificate" >&2
+    exit 1
+fi
+openssl x509 -inform DER -in "$certificate" -noout -checkend 0
+subject="$(openssl x509 -inform DER -in "$certificate" -noout -subject -nameopt RFC2253)"
+# Both release and CI certificates have a single, simple CN; refuse anything
+# unexpected rather than accepting a mismatch in the certificate identity.
+if [[ "$subject" != "subject=CN=$expected_signer" ]]; then
+    echo "NVIDIA module signer differs from embedded certificate ($subject vs $expected_signer)" >&2
+    exit 1
+fi
+if [[ -e /etc/pki/akmods/private/private_key.priv ]]; then
+    echo 'Unexpected NVIDIA private signing key in runtime image' >&2
+    exit 1
+fi
+echo "PASS: embedded NVIDIA public certificate matches module signer $expected_signer"
+
 for module in nvidia nvidia_modeset nvidia_drm nvidia_uvm; do
     filename="$(modinfo -k "$kernel" -F filename "$module")"
     [[ -f "$filename" ]] || { echo "Missing module file: $module ($filename)" >&2; exit 1; }
