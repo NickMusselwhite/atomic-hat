@@ -46,7 +46,7 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
 ## Verify final image and contents are correct.
 RUN bootc container lint
 
-# Experimental installation test: do not publish this stage.
+# Build the clean runtime separately from NVIDIA compilation.
 # Use a fresh Kinoite base so NVIDIA cannot rely on the builder's toolchain.
 FROM quay.io/fedora/fedora-kinoite:45 AS runtime-test
 
@@ -113,6 +113,6 @@ RUN set -eu; \
 
 RUN bootc container lint
 
-# Experimental final image is the clean runtime, not the NVIDIA builder.
-# Pull request builds validate this stage without publishing to GHCR.
+# The distributable image is the clean runtime, not the NVIDIA builder.
+# Pull request workflows validate it without publishing to GHCR.
 FROM runtime-test AS final
