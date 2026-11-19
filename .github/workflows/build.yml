@@ -245,13 +245,73 @@ jobs:
           echo "MODULE_SIGNING_KEY_FILE=${signing_dir}/module.key" >> "${GITHUB_ENV}"
           echo "MODULE_SIGNING_CERT_FILE=${GITHUB_WORKSPACE}/atomic-hat.der" >> "${GITHUB_ENV}"
 
-      # This actually builds the container image
-      - name: Build Image
-        id: build-image
+      # Give compilation/signing their own Actions log. The subsequent
+      # build reuses this stage's layers in the same Podman storage.
+      - name: Build signed NVIDIA kernel modules
+        shell: bash
         run: |
+          set -euo pipefail
+          podman build --layers=true --pull=newer --target nvidia-builder \
+            --secret "id=module_signing_key,src=${MODULE_SIGNING_KEY_FILE}" \
+            --secret "id=module_signing_cert,src=${MODULE_SIGNING_CERT_FILE}" \
+            --file Containerfile \
+            --tag "${IMAGE_NAME}:nvidia-builder-ci" .
+
+      - name: Build final Atomic Hat desktop image
+        id: build-image
+        shell: bash
+        run: |
+          set -euo pipefail
           just build \
-            ${IMAGE_NAME} \
-            ${DEFAULT_TAG}
+            "${IMAGE_NAME}" \
+            "${DEFAULT_TAG}"
+
+      # Read-only audit of package-owned and unowned /var/lib directories.
+      # Use this output to decide which remaining bootc lint warnings need
+      # tmpfiles.d rules versus narrowly targeted cleanup.
+      - name: Audit final runtime /var/lib directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman run --rm \
+            --entrypoint /bin/bash \
+            -v "${GITHUB_WORKSPACE}/build_files/audit-var.sh:/run/atomic-hat-audit-var.sh:ro" \
+            "${IMAGE_NAME}:${DEFAULT_TAG}" /run/atomic-hat-audit-var.sh
+
+      # Existing Containerfile lint may print warnings without failing. Reject
+      # unresolved warnings in the assembled final image before rechunking.
+      - name: Require warning-free final bootc lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${IMAGE_NAME}:${DEFAULT_TAG}"
+          lint_output="$(podman run --rm --entrypoint bootc "$image" container lint 2>&1)"
+          printf '%s\n' "$lint_output"
+          if grep -Eq '^Lint warning:|^Warnings: [1-9][0-9]*' <<< "$lint_output"; then
+            echo '::error title=bootc lint::Final runtime has unresolved lint warnings'
+            exit 1
+          fi
+          echo 'PASS: final runtime has no bootc lint warnings'
+
+      # Validate the actual final image, never just the NVIDIA builder.
+      - name: Verify final NVIDIA modules and applications
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman run --rm \
+            --entrypoint /bin/bash \
+            -v "${GITHUB_WORKSPACE}/build_files/validate-final.sh:/run/atomic-hat-validate.sh:ro" \
+            "${IMAGE_NAME}:${DEFAULT_TAG}" /run/atomic-hat-validate.sh
+
+      # Snapshot every installed RPM (with version) before rechunking.
+      - name: Record final RPM inventory before rechunk
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman run --rm --entrypoint rpm "${IMAGE_NAME}:${DEFAULT_TAG}" \
+            -qa --qf '%{NAME}.%{ARCH} %{EPOCHNUM}:%{VERSION}-%{RELEASE}\n' \
+            | sort > "${RUNNER_TEMP}/atomic-hat-rpms-before.txt"
+          echo "Recorded $(wc -l < "${RUNNER_TEMP}/atomic-hat-rpms-before.txt") RPMs"
 
       - name: Record OCI metadata before rechunk
         id: oci-metadata
@@ -265,6 +325,9 @@ jobs:
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
           echo "Image version: ${version}"
           echo "Git revision: ${revision}"
+
+      # Build Image now builds final -> runtime-test, including all applications.
+      # Do not build runtime-test a second time; that duplicated installation.
 
       - name: Remove module signing files
         if: always()
@@ -286,7 +349,34 @@ jobs:
           set -euo pipefail
           image="${IMAGE_NAME}:${DEFAULT_TAG}"
           test "$(podman image inspect "$image" --format '{{ index .Config.Labels "containers.bootc" }}')" = 1
-          podman run --rm --entrypoint bootc "$image" container lint
+          lint_output="$(podman run --rm --entrypoint bootc "$image" container lint 2>&1)"
+          printf '%s\n' "$lint_output"
+          if grep -Eq '^Lint warning:|^Warnings: [1-9][0-9]*' <<< "$lint_output"; then
+            echo '::error title=bootc lint::Rechunked image has unresolved lint warnings'
+            exit 1
+          fi
+          echo 'PASS: rechunked runtime has no bootc lint warnings'
+
+      - name: Verify rechunked NVIDIA modules and applications
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman run --rm \
+            --entrypoint /bin/bash \
+            -v "${GITHUB_WORKSPACE}/build_files/validate-final.sh:/run/atomic-hat-validate.sh:ro" \
+            "${IMAGE_NAME}:${DEFAULT_TAG}" /run/atomic-hat-validate.sh
+
+      - name: Compare RPM inventory after rechunk
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman run --rm --entrypoint rpm "${IMAGE_NAME}:${DEFAULT_TAG}" \
+            -qa --qf '%{NAME}.%{ARCH} %{EPOCHNUM}:%{VERSION}-%{RELEASE}\n' \
+            | sort > "${RUNNER_TEMP}/atomic-hat-rpms-after.txt"
+          diff -u \
+            "${RUNNER_TEMP}/atomic-hat-rpms-before.txt" \
+            "${RUNNER_TEMP}/atomic-hat-rpms-after.txt"
+          echo "PASS: all installed RPMs and versions survived rechunking"
 
       - name: Diagnose OCI metadata after rechunk
         shell: bash

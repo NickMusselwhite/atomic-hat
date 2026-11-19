@@ -50,26 +50,9 @@ dnf5 install -y --exclude='kernel*' --setopt=install_weak_deps=False \
     akmod-nvidia \
     xorg-x11-drv-nvidia \
     xorg-x11-drv-nvidia-cuda \
-    xorg-x11-drv-nvidia-power \
-    tmux
+    xorg-x11-drv-nvidia-power
 restore_akmods_hook
 trap - EXIT
-
-# Replace Fedora's restricted FFmpeg build and its split libraries.
-if rpm -q ffmpeg-free >/dev/null 2>&1; then
-    dnf5 swap -y --allowerasing ffmpeg-free ffmpeg
-else
-    dnf5 install -y --allowerasing ffmpeg
-fi
-
-# On Fedora 44 VA-API is part of mesa-dri-drivers; Freeworld coexists with
-# it. VDPAU is no longer a separate Mesa Freeworld package.
-dnf5 install -y mesa-va-drivers-freeworld
-if rpm -q mesa-vulkan-drivers >/dev/null 2>&1; then
-    dnf5 swap -y --allowerasing mesa-vulkan-drivers mesa-vulkan-drivers-freeworld
-else
-    dnf5 install -y mesa-vulkan-drivers-freeworld
-fi
 
 # RPM scriptlets alone do not reliably build akmods in an OCI build. Build
 # as an unprivileged user, then install the generated kmod RPM as root.
@@ -121,6 +104,15 @@ for module_rpm in "${module_rpms[@]}"; do
     echo "PASS: ${module_rpm} has no direct build-tool dependencies"
 done
 
+# Export the finished signed kmod RPMs at a stable builder-only path.
+# The clean runtime installs them through a read-only build-stage bind mount;
+# neither the archive nor the NVIDIA compilation toolchain is shipped in
+# the final image.
+artifact_dir=/usr/share/atomic-hat/build-artifacts/nvidia
+install -d -m 0755 "${artifact_dir}"
+install -m 0644 "${module_rpms[@]}" "${artifact_dir}/"
+echo "Preserved signed NVIDIA RPMs in ${artifact_dir}"
+
 dnf5 install -y "${module_rpms[@]}"
 depmod -a "${kernel}"
 
@@ -158,20 +150,11 @@ done < "${build_dir}/module-files.txt"
 test "${signed_modules}" -ge 4
 openssl x509 -inform DER -in "${certificate}" -noout -subject -fingerprint -sha256
 
-# Catch unwanted erasures and missing codecs before publication.
+# Verify the builder's NVIDIA userspace components and core OS. Codec,
+# desktop application, and service tests now run in the clean runtime.
 rpm -q bootc kernel-core plasma-workspace mesa-dri-drivers \
-    mesa-va-drivers-freeworld mesa-vulkan-drivers-freeworld \
-    ffmpeg ffmpeg-libs xorg-x11-drv-nvidia-cuda
-ffmpeg -hide_banner -encoders > "${build_dir}/encoders.txt"
-grep -q 'libx264' "${build_dir}/encoders.txt"
-grep -q 'h264_nvenc' "${build_dir}/encoders.txt"
+    xorg-x11-drv-nvidia-cuda
 command -v nvidia-smi
-
-# Install additional desktop and gaming applications.
-bash /ctx/applications.sh
-
-# Preserve the template's existing service customization.
-systemctl enable podman.socket
 
 # Remove any unrelated private key generated when akmods was installed.
 rm -f /etc/pki/akmods/private/private_key.priv
