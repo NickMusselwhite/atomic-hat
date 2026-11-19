@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Reproduce the desktop software setup from build.sh in the clean runtime.
-# The NVIDIA kernel modules are already signed, copied, and installed by
-# runtime-test; do not install akmods or any compilation dependencies here.
+# Install the desktop software into the clean runtime.
+# NVIDIA modules were signed in nvidia-builder and installed from a temporary
+# read-only mount; do not install akmods or compilation dependencies here.
 
 # applications.sh depends on the signed third-party repository definitions,
 # 1Password group reservations, and other system customizations.
