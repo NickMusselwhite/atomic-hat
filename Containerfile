@@ -65,6 +65,13 @@ RUN --mount=type=bind,from=nvidia-builder,source=/usr/share/atomic-hat/build-art
       xorg-x11-drv-nvidia-cuda \
       xorg-x11-drv-nvidia-power
 
+# Carry only the exact public certificate from the NVIDIA builder into
+# the clean runtime. This certificate was used to verify the signed kmod RPM;
+# it cannot drift from the module signer if a builder layer is cached.
+# Keep it under image-managed /usr so it survives bootc deployment updates.
+# No NVIDIA signing private key is copied into the runtime.
+COPY --from=nvidia-builder /etc/pki/akmods/certs/public_key.der /usr/share/atomic-hat/certs/nvidia-module-signing.der
+
 # Confirm that NVIDIA installed and the compilation toolchain did not.
 # Check absent packages individually: rpm -q with multiple arguments returns
 # failure even if only ONE package is absent, which would give a false pass.
