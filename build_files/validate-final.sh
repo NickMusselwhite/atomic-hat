@@ -86,7 +86,7 @@ echo 'PASS: NVIDIA build dependencies are absent from final image'
 # either the final runtime or its rechunked representation.
 for archive_dir in \
     /usr/share/atomic-hat/build-artifacts/nvidia \
-    /mnt/atomic-hat-nvidia-rpms; do
+    /run/atomic-hat-nvidia-rpms; do
     if [[ -e "$archive_dir" ]]; then
         echo "Unexpected NVIDIA build artifact location in final image: $archive_dir" >&2
         exit 1
