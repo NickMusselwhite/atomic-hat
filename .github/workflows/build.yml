@@ -278,6 +278,21 @@ jobs:
             -v "${GITHUB_WORKSPACE}/build_files/audit-var.sh:/run/atomic-hat-audit-var.sh:ro" \
             "${IMAGE_NAME}:${DEFAULT_TAG}" /run/atomic-hat-audit-var.sh
 
+      # Existing Containerfile lint may print warnings without failing. Reject
+      # unresolved warnings in the assembled final image before rechunking.
+      - name: Require warning-free final bootc lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${IMAGE_NAME}:${DEFAULT_TAG}"
+          lint_output="$(podman run --rm --entrypoint bootc "$image" container lint 2>&1)"
+          printf '%s\n' "$lint_output"
+          if grep -Eq '^Lint warning:|^Warnings: [1-9][0-9]*' <<< "$lint_output"; then
+            echo '::error title=bootc lint::Final runtime has unresolved lint warnings'
+            exit 1
+          fi
+          echo 'PASS: final runtime has no bootc lint warnings'
+
       # Validate the actual final image, never just the NVIDIA builder.
       - name: Verify final NVIDIA modules and applications
         shell: bash
@@ -334,7 +349,13 @@ jobs:
           set -euo pipefail
           image="${IMAGE_NAME}:${DEFAULT_TAG}"
           test "$(podman image inspect "$image" --format '{{ index .Config.Labels "containers.bootc" }}')" = 1
-          podman run --rm --entrypoint bootc "$image" container lint
+          lint_output="$(podman run --rm --entrypoint bootc "$image" container lint 2>&1)"
+          printf '%s\n' "$lint_output"
+          if grep -Eq '^Lint warning:|^Warnings: [1-9][0-9]*' <<< "$lint_output"; then
+            echo '::error title=bootc lint::Rechunked image has unresolved lint warnings'
+            exit 1
+          fi
+          echo 'PASS: rechunked runtime has no bootc lint warnings'
 
       - name: Verify rechunked NVIDIA modules and applications
         shell: bash
