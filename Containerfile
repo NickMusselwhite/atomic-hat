@@ -50,18 +50,17 @@ RUN bootc container lint
 # Use a fresh Kinoite base so NVIDIA cannot rely on the builder's toolchain.
 FROM quay.io/fedora/fedora-kinoite:45 AS runtime-test
 
-# Copy the RPM signed and exported by the existing NVIDIA builder stage.
-COPY --from=nvidia-builder /usr/share/atomic-hat/build-artifacts/nvidia/ /usr/share/atomic-hat/build-artifacts/nvidia/
-
-# Install the same RPM Fusion repos and NVIDIA userspace packages as build.sh.
-# Install the local kmod RPM in the same DNF transaction. Its kernel-uname-r
-# requirement must be satisfied by the kernel in this clean Kinoite image.
-RUN --mount=type=cache,dst=/var/cache \
+# Use the signed RPM exported by the NVIDIA builder through an ephemeral
+# build-stage mount instead of COPY. DNF can install it, but the original RPM
+# archive never enters a runtime image layer (or the final OCI image).
+# Its kernel-uname-r requirement must match this clean Kinoite base.
+RUN --mount=type=bind,from=nvidia-builder,source=/usr/share/atomic-hat/build-artifacts/nvidia,target=/mnt/atomic-hat-nvidia-rpms,ro \
+    --mount=type=cache,dst=/var/cache \
     dnf5 install -y \
       https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-45.noarch.rpm \
       https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-45.noarch.rpm && \
     dnf5 install -y --exclude='kernel*' --setopt=install_weak_deps=False \
-      /usr/share/atomic-hat/build-artifacts/nvidia/kmod-nvidia-*.rpm \
+      /mnt/atomic-hat-nvidia-rpms/kmod-nvidia-*.rpm \
       xorg-x11-drv-nvidia \
       xorg-x11-drv-nvidia-cuda \
       xorg-x11-drv-nvidia-power
