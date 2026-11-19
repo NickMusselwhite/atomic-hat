@@ -104,11 +104,10 @@ for module_rpm in "${module_rpms[@]}"; do
     echo "PASS: ${module_rpm} has no direct build-tool dependencies"
 done
 
-# Experimental multi-stage preparation: keep copies of the finished, signed
-# kmod RPMs at a predictable path. A later build stage will COPY these RPMs
-# instead of rebuilding NVIDIA or carrying the compiler into the runtime.
-# This temporarily enlarges the experimental image; remove this copy from
-# the final runtime stage when the multi-stage build is implemented.
+# Export the finished signed kmod RPMs at a stable builder-only path.
+# The clean runtime installs them through a read-only build-stage bind mount;
+# neither the archive nor the NVIDIA compilation toolchain is shipped in
+# the final image.
 artifact_dir=/usr/share/atomic-hat/build-artifacts/nvidia
 install -d -m 0755 "${artifact_dir}"
 install -m 0644 "${module_rpms[@]}" "${artifact_dir}/"
