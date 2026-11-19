@@ -80,3 +80,16 @@ for package in akmods akmod-nvidia kernel-devel kernel-devel-matched \
     fi
 done
 echo 'PASS: NVIDIA build dependencies are absent from final image'
+
+# Verify that the signed RPM was installed, not retained as an archive.
+# The temporary build mount and the builder's export must not be present in
+# either the final runtime or its rechunked representation.
+for archive_dir in \
+    /usr/share/atomic-hat/build-artifacts/nvidia \
+    /mnt/atomic-hat-nvidia-rpms; do
+    if [[ -e "$archive_dir" ]]; then
+        echo "Unexpected NVIDIA build artifact location in final image: $archive_dir" >&2
+        exit 1
+    fi
+done
+echo 'PASS: signed NVIDIA RPM archive and temporary build mount are absent'
